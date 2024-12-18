@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Растеризация отрезков и окружностей</title>
+  <style>
+    /* Стили для интерфейса */
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0;
+      background-color: #f4f4f9;
+    }
+
+    .container {
+      display: flex;
+      justify-content: flex-start;
+      align-items: flex-start;
+      width: 100%;
+      max-width: 1000px;
+      margin-top: 20px;
+    }
+
+    .controls {
+      border: 2px solid #000;
+      padding: 20px;
+      width: 250px;
+      background-color: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+
+    .buttons-container {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      margin-top: 20px;
+    }
+
+    button {
+      padding: 8px 12px;
+      height: 40px;
+      margin: 5px 0;
+      cursor: pointer;
+      width: 100%;
+    }
+
+    input {
+      padding: 5px;
+      margin: 5px;
+      width: 80px;
+    }
+
+    label {
+      font-size: 14px;
+    }
+
+    canvas {
+      border: 1px solid black;
+      margin-left: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Растеризация отрезков и окружностей</h1>
+
+  <div class="container">
+    <div class="controls">
+      <label>Координаты X1, Y1 (отрезок): </label>
+      <input type="number" id="x1" value="5">
+      <input type="number" id="y1" value="5">
+      <br>
+      <label>Координаты X2, Y2 (отрезок): </label>
+      <input type="number" id="x2" value="10">
+      <input type="number" id="y2" value="10">
+      <br>
+      <label>Координаты центра (окружность): </label>
+      <input type="number" id="centerX" value="10">
+      <input type="number" id="centerY" value="10">
+      <br>
+      <label>Радиус (окружность): </label>
+      <input type="number" id="radius" value="4">
+      
+      <div class="buttons-container">
+        <button onclick="measureExecutionTime(drawLineStep)">Пошаговый алгоритм</button>
+        <button onclick="measureExecutionTime(drawLineCDA)">Алгоритм ЦДА</button>
+        <button onclick="measureExecutionTime(drawLineBresenham)">Алгоритм Брезенхема (отрезок)</button>
+        <button onclick="measureExecutionTime(drawCircleBresenham)">Алгоритм Брезенхема (окружность)</button>
+      </div>
+
+      <p id="timeOutput"></p> <!-- Вывод времени выполнения алгоритма -->
+    </div>
+
+    <canvas id="canvas" width="640" height="640"></canvas>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // Размер клетки
+    const cellSize = 20;
+    const gridSize = 30;  // Сетка 15 клеток в каждую сторону
+
+    // Очистка холста
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Функция для рисования сетки и осей
+    function drawGrid() {
+  clearCanvas();
+
+  ctx.strokeStyle = "#ccc"; // Цвет линий сетки
+  ctx.lineWidth = 0.5; // Толщина линий сетки
+
+  const centerX = Math.floor(canvas.width / 2);
+  const centerY = Math.floor(canvas.height / 2);
+
+  // Рисуем вертикальные линии сетки
+  for (let x = -gridSize; x <= gridSize; x++) {
+    const canvasX = centerX + x * cellSize;
+    ctx.beginPath();
+    ctx.moveTo(canvasX + 0.5, 0); // Смещаем на 0.5 для чёткости
+    ctx.lineTo(canvasX + 0.5, canvas.height);
+    ctx.stroke();
+  }
+
+  // Рисуем горизонтальные линии сетки
+  for (let y = -gridSize; y <= gridSize; y++) {
+    const canvasY = centerY - y * cellSize;
+    ctx.beginPath();
+    ctx.moveTo(0, canvasY + 0.5);
+    ctx.lineTo(canvas.width, canvasY + 0.5);
+    ctx.stroke();
+  }
+
+  // Рисуем оси
+  ctx.strokeStyle = "#000"; // Цвет осей
+  ctx.lineWidth = 1;
+
+  // Горизонтальная ось X
+  ctx.beginPath();
+  ctx.moveTo(0, centerY + 0.5);
+  ctx.lineTo(canvas.width, centerY + 0.5);
+  ctx.stroke();
+
+  // Вертикальная ось Y
+  ctx.beginPath();
+  ctx.moveTo(centerX + 0.5, 0);
+  ctx.lineTo(centerX + 0.5, canvas.height);
+  ctx.stroke();
+
+  // Подписи координат
+  ctx.font = "12px Arial";
+  ctx.fillStyle = "#000";
+
+  // Подписи для оси X
+  for (let i = -gridSize; i <= gridSize; i++) {
+    if (i !== 0) {
+      const canvasX = centerX + i * cellSize;
+      ctx.fillText(i, canvasX - 5, centerY + 15); // Подписи X
+    }
+  }
+
+  // Подписи для оси Y
+  for (let i = -gridSize; i <= gridSize; i++) {
+    if (i !== 0) {
+      const canvasY = centerY - i * cellSize;
+      ctx.fillText(i, centerX + 5, canvasY + 5); // Подписи Y
+    }
+  }
+}
+
+function measureExecutionTime(drawFunction) {
+  const startTime = performance.now();
+  drawFunction();
+  const endTime = performance.now();
+  const timeTaken = endTime - startTime;
+
+  // Выводим время работы алгоритма
+  document.getElementById("timeOutput").textContent = `Время выполнения: ${timeTaken.toFixed(2)} мс`;
+}
+
+// Функция для рисования пикселя с заданным цветом
+// Функция для рисования пикселя с заданным цветом и размером
+function drawPixel(x, y, color = '#000') {
+    ctx.fillStyle = color;
+
+    // Масштабируем координаты для сетки
+    let pixelX = x * cellSize + canvas.width / 2;
+    let pixelY = canvas.height / 2 - y * cellSize;  // инвертируем ось Y
+
+    ctx.fillRect(pixelX, pixelY, cellSize, cellSize);
+}
+
+    // Пошаговый алгоритм растеризации отрезка
+    function drawLineStep() {
+        clearCanvas();
+      drawGrid();
+
+      // Получаем координаты отрезка
+      x1 = parseInt(document.getElementById("x1").value);
+      y1 = parseInt(document.getElementById("y1").value);
+      x2 = parseInt(document.getElementById("x2").value);
+      y2 = parseInt(document.getElementById("y2").value);
+
+      // Масштабируем координаты
+      x1 = Math.floor(x1);
+      y1 = Math.floor(y1);
+      x2 = Math.floor(x2);
+      y2 = Math.floor(y2);
+
+      let dx = Math.abs(x2 - x1);
+      let dy = Math.abs(y2 - y1);
+      let sx = (x1 < x2) ? 1 : -1;
+      let sy = (y1 < y2) ? 1 : -1;
+      let err = dx - dy;
+
+      let x = x1;
+      let y = y1;
+
+      // Начинаем пошаговое рисование
+      interval = setInterval(function() {
+        // Рисуем текущую клетку серым
+        drawPixel(x, y, "#cccccc");
+
+        // Условие завершения
+        if (x === x2 && y === y2) {
+          clearInterval(interval); // Останавливаем анимацию
+          drawLineRed(x1, y1, x2, y2); // Рисуем красный отрезок
+        }
+
+        let e2 = 2 * err;
+        if (e2 > -dy) {
+          err -= dy;
+          x += sx;
+        }
+        if (e2 < dx) {
+          err += dx;
+          y += sy;
+        }
+      }, 50);
+    }
+
+    function drawLineRed(x1, y1, x2, y2) {
+      const startX = x1 * cellSize + canvas.width / 2;
+      const startY = canvas.height / 2 - y1 * cellSize;
+      const endX = x2 * cellSize + canvas.width / 2;
+      const endY = canvas.height / 2 - y2 * cellSize;
+
+      ctx.strokeStyle = '#FF0000'; // Красный цвет для отрезка
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+    }
+
+    // Алгоритм ЦДА
+    function drawLineCDA() {
+        clearCanvas();
+    drawGrid();
+
+    // Получаем координаты отрезка
+    let x1 = parseInt(document.getElementById("x1").value);
+    let y1 = parseInt(document.getElementById("y1").value);
+    let x2 = parseInt(document.getElementById("x2").value);
+    let y2 = parseInt(document.getElementById("y2").value);
+
+    // Масштабируем координаты
+    x1 = Math.floor(x1);
+    y1 = Math.floor(y1);
+    x2 = Math.floor(x2);
+    y2 = Math.floor(y2);
+
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+
+    let steps = Math.max(Math.abs(dx), Math.abs(dy));
+    let xIncrement = dx / steps;
+    let yIncrement = dy / steps;
+
+    let x = x1;
+    let y = y1;
+
+    // Начинаем пошаговое рисование
+    interval = setInterval(function() {
+        // Рисуем текущую клетку серым
+        drawPixel(Math.round(x), Math.round(y), "#cccccc");
+
+        // Условие завершения
+        if (Math.round(x) === x2 && Math.round(y) === y2) {
+            clearInterval(interval); // Останавливаем анимацию
+            drawLineRed(x1, y1, x2, y2); // Рисуем красный отрезок
+        }
+
+        x += xIncrement;
+        y += yIncrement;
+    }, 50);
+    }
+
+    // Алгоритм Брезенхема (отрезок)
+    function drawLineBresenham() {
+        clearCanvas();
+  drawGrid();
+
+  let x1 = parseInt(document.getElementById("x1").value);
+  let y1 = parseInt(document.getElementById("y1").value);
+  let x2 = parseInt(document.getElementById("x2").value);
+  let y2 = parseInt(document.getElementById("y2").value);
+
+  // Масштабируем координаты
+  x1 = Math.floor(x1);
+  y1 = Math.floor(y1);
+  x2 = Math.floor(x2);
+  y2 = Math.floor(y2);
+
+  let dx = Math.abs(x2 - x1);
+  let dy = Math.abs(y2 - y1);
+  let sx = (x1 < x2) ? 1 : -1;
+  let sy = (y1 < y2) ? 1 : -1;
+  let err = dx - dy;
+
+  let x = x1;
+  let y = y1;
+
+  // Начинаем пошаговое рисование
+  interval = setInterval(function() {
+    // Рисуем текущую клетку серым
+    drawPixel(x, y, "#cccccc");
+
+    // Условие завершения
+    if (x === x2 && y === y2) {
+      clearInterval(interval); // Останавливаем анимацию
+      drawLineRed(x1, y1, x2, y2); // Рисуем красный отрезок
+    }
+
+    let e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y += sy;
+    }
+  }, 50);
+}
+
+    // Алгоритм Брезенхема (окружность)
+    function drawCircleBresenham() {
+    clearCanvas();  // Очистка холста
+    drawGrid();     // Рисуем сетку
+
+    // Получаем значения центра и радиуса
+    let centerX = parseInt(document.getElementById("centerX").value);
+    let centerY = parseInt(document.getElementById("centerY").value);
+    let r = parseInt(document.getElementById("radius").value);
+
+    // Масштабируем радиус в пикселях
+    const radiusInPixels = r * cellSize;
+
+    // Начальные значения
+    let x = 0, y = radiusInPixels;
+    let p = 3 - 2 * radiusInPixels;
+
+    // Функция для отрисовки красных точек окружности с учетом сетки
+    function plotCirclePoints(xc, yc, x, y) {
+        // Рисуем только те точки, которые находит алгоритм
+        drawRedPoint(xc + x, yc - y);  // Верхняя правая
+        drawRedPoint(xc - x, yc - y);  // Верхняя левая
+        drawRedPoint(xc + x, yc + y);  // Нижняя правая
+        drawRedPoint(xc - x, yc + y);  // Нижняя левая
+        drawRedPoint(xc + y, yc - x);  // Правая верхняя
+        drawRedPoint(xc - y, yc - x);  // Левая верхняя
+        drawRedPoint(xc + y, yc + x);  // Правая нижняя
+        drawRedPoint(xc - y, yc + x);  // Левая нижняя
+    }
+
+    // Функция для рисования красной точки
+    function drawRedPoint(x, y) {
+        const gridCenterX = Math.floor(canvas.width / 2);
+        const gridCenterY = Math.floor(canvas.height / 2);
+        
+        // Преобразуем координаты в пиксели, с учетом размера ячеек сетки
+        const canvasX = gridCenterX + (x * cellSize);
+        const canvasY = gridCenterY - (y * cellSize);
+
+        // Рисуем точку как маленький квадрат (учитывая, что сетка не совсем точна)
+        ctx.fillStyle = "#FF0000"; // Красный цвет
+        ctx.fillRect(canvasX - 2, canvasY - 2, 4, 4); // Точка как маленький квадрат
+    }
+
+    // Начинаем пошаговое рисование
+    let interval = setInterval(function() {
+        plotCirclePoints(centerX, centerY, x, y);  // Рисуем текущие точки
+
+        // Условие завершения
+        if (x >= y) {
+            clearInterval(interval);  // Останавливаем анимацию
+            drawCircleRed(centerX, centerY, r);  // Рисуем красную окружность
+        }
+
+        // Обновляем переменные по алгоритму Брезенхема
+        if (p < 0) {
+            p += 4 * x + 6;
+        } else {
+            p += 4 * (x - y) + 10;
+            y--;
+        }
+        x++;
+    }, 50);  // Интервал для пошаговой анимации
+}
+
+// Функция для рисования красной окружности
+function drawCircleRed(centerX, centerY, r) {
+  const gridCenterX = Math.floor(canvas.width / 2);
+  const gridCenterY = Math.floor(canvas.height / 2);
+  const cellSize = 20; // Размер одной клетки сетки
+
+  // Перевод координат центра окружности в пересечения сетки
+  const canvasCenterX = gridCenterX + centerX * cellSize;
+  const canvasCenterY = gridCenterY - centerY * cellSize;
+
+  let x = 0;
+  let y = r;
+  let p = 3 - 2 * r;
+
+  let lastPoints = [];
+
+  // Функция для рисования точки на пересечении сетки
+  function drawGridPoint(x, y) {
+    ctx.fillStyle = "#FF0000"; // Красный цвет
+    ctx.fillRect(x - 2, y - 2, 4, 4); // Точка как небольшой квадрат
+  }
+
+  // Функция для соединения двух точек линией
+  function drawLine(x1, y1, x2, y2) {
+    ctx.strokeStyle = "#FF0000";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+
+  // Приведение координат к ближайшему пересечению сетки
+  function snapToGrid(value) {
+    return Math.round(value / cellSize) * cellSize;
+  }
+
+  // Рисуем точки на симметричных позициях
+  function plotCirclePoints(xc, yc, x, y) {
+    const points = [
+      [snapToGrid(xc + x * cellSize), snapToGrid(yc - y * cellSize)],
+      [snapToGrid(xc - x * cellSize), snapToGrid(yc - y * cellSize)],
+      [snapToGrid(xc + x * cellSize), snapToGrid(yc + y * cellSize)],
+      [snapToGrid(xc - x * cellSize), snapToGrid(yc + y * cellSize)],
+      [snapToGrid(xc + y * cellSize), snapToGrid(yc - x * cellSize)],
+      [snapToGrid(xc - y * cellSize), snapToGrid(yc - x * cellSize)],
+      [snapToGrid(xc + y * cellSize), snapToGrid(yc + x * cellSize)],
+      [snapToGrid(xc - y * cellSize), snapToGrid(yc + x * cellSize)],
+    ];
+
+    // Рисуем точки
+    points.forEach(([px, py]) => drawGridPoint(px, py));
+
+    // Соединяем текущие точки с предыдущими, если они есть
+    if (lastPoints.length > 0) {
+      for (let i = 0; i < points.length; i++) {
+        drawLine(lastPoints[i][0], lastPoints[i][1], points[i][0], points[i][1]);
+      }
+    }
+
+    lastPoints = points; // Обновляем последние точки
+  }
+
+  // Алгоритм Брезенхема для окружности
+  while (x <= y) {
+    plotCirclePoints(canvasCenterX, canvasCenterY, x, y);
+
+    if (p < 0) {
+      p += 4 * x + 6;
+    } else {
+      p += 4 * (x - y) + 10;
+      y--;
+    }
+    x++;
+  }
+}
+
+
+    // Вызов начальной функции
+    drawGrid();
+  </script>
+
+</body>
+</html>
